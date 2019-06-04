@@ -120,12 +120,15 @@ class LowRankImputer(transformer.TransformerPrimitiveBase[Inputs, Outputs, Hyper
         columns_to_drop = list(np.where(np.array(np.sum(np.invert(np.isnan(inputs))))==0)[0])
 
         inputs.drop(columns=inputs.columns[columns_to_drop], inplace=True)
-        obs = list(zip(*np.where(np.invert(np.isnan(inputs.values)))))
-        obs = [(item[0]+1, item[1]+1) for item in obs]
+#        obs = list(zip(*np.where(np.invert(np.isnan(inputs.values)))))
+#        obs = [(item[0]+1, item[1]+1) for item in obs]
+#        j.obs = obs
         self._keys = list(inputs)
         self._index = inputs.index
+        
+        inputs_df_with_missing = j.NaNs_to_Missing_b(j.DataFrame(inputs.values))
 
-        glrm_j = j.GLRM(j.DataFrame(inputs.values), QuadLoss(), ZeroReg(), ZeroReg(), self._k, obs=obs)
+        glrm_j = j.GLRM(inputs_df_with_missing, QuadLoss(), ZeroReg(), ZeroReg(), self._k, obs=j.observations(inputs_df_with_missing))
         X, Y, ch = j.fit_b(glrm_j)
 
         self._X = X

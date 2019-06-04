@@ -32,6 +32,9 @@ ensure("NullableArrays")
 ensure("FactCheck")
 ensure("PyCall")
 
+# check out the lates GLRM
+Pkg.checkout("LowRankModels")
+
 
 # This sets the version of the packages that are used.  In the long term it
 # would be better to use built in Julia commands.  However, here we pin the
