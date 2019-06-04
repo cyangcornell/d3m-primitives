@@ -92,13 +92,13 @@ class HuberPCA(unsupervised_learning.UnsupervisedLearnerPrimitiveBase[Inputs, Ou
                                                'contact':'mailto:cy438@cornell.edu',
                                             
             'uris': [
-                'https://gitlab.datadrivendiscovery.org/cyang2/pyglrm_d3m.git',
+                'https://github.com/cyangcornell/d3m-primitives.git',
             ],
         },
                                                  
         'installation': [{
             'type': 'PIP',
-                         'package_uri': 'git+https://gitlab.datadrivendiscovery.org/cyang2/pyglrm_d3m.git@{git_commit}#egg=pyglrm-d3m'.format(git_commit=utils.current_git_commit(os.path.dirname(__file__)))
+                         'package_uri': 'git+https://github.com/cyangcornell/d3m-primitives.git@{git_commit}#egg=pyglrm-d3m'.format(git_commit=utils.current_git_commit(os.path.dirname(__file__)))
 
         }],
 
