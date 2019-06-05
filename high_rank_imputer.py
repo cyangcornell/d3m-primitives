@@ -53,12 +53,12 @@ class HighRankImputer(transformer.TransformerPrimitiveBase[Inputs, Outputs, Hype
             'name': __author__,
             'contact': 'mailto:cy438@cornell.edu',
            'uris': [
-                    'https://github.com/cyangcornell/d3m-primitives.git',
+                    'https://gitlab.datadrivendiscovery.org/cyang2/pyglrm_d3m.git',
                     ],
         },
        'installation': [{
                         'type': 'PIP',
-                        'package_uri': 'git+https://github.com/cyangcornell/d3m-primitives.git@{git_commit}#egg=pyglrm-d3m'.format(git_commit=utils.current_git_commit(os.path.dirname(__file__)))
+                        'package_uri': 'git+https://gitlab.datadrivendiscovery.org/cyang2/pyglrm_d3m.git@{git_commit}#egg=pyglrm-d3m-0.1.1'.format(git_commit=utils.current_git_commit(os.path.dirname(__file__)))
                         
                         }],
 
@@ -88,7 +88,13 @@ class HighRankImputer(transformer.TransformerPrimitiveBase[Inputs, Outputs, Hype
         maxiter=self.maxiter
         
         X=inputs.values.copy()
-        X = X.T
+        
+        m0,n0 = X.shape
+        if m0>n0:
+            X = X.T
+        
+        m,n = X.shape
+
         self._keys = list(inputs)
         self._index = inputs.index
         m,n = X.shape
@@ -109,17 +115,17 @@ class HighRankImputer(transformer.TransformerPrimitiveBase[Inputs, Outputs, Hype
                 d=np.int(np.round(2*sr*min(m,n)))
             if min(m,n)>1000:
                 d=min(d,500)
-            print('The auto-estimated latent dimension is %d.' % d)
+            #print('The auto-estimated latent dimension is %d.' % d)
         else:
             d=self.d
-            print('The user-defined latent dimension is %d.' % d)
+            #print('The user-defined latent dimension is %d.' % d)
   
         A=np.random.randn(m,d)
         Z=np.zeros((d,n))
-        rho=max(1.5*np.sqrt(M.mean()),0.25)
+        rho=max(1.5*np.sqrt(M.mean()),0.5)
 
         iter=0
-        cc=0.99
+        cc=0.5
 
         while iter<self.maxiter:
             
@@ -132,6 +138,7 @@ class HighRankImputer(transformer.TransformerPrimitiveBase[Inputs, Outputs, Hype
                 Z=Z_new+cc*(Z_new-Z_old)
 
             tau=rho*np.linalg.norm(A,2)**2
+
             
             G=Z-(-np.dot(A.T,np.multiply(M,X-np.dot(A,Z))))/tau
             Z_new=np.maximum(0,G-beta/tau)+np.minimum(0,G+beta/tau)
@@ -151,14 +158,14 @@ class HighRankImputer(transformer.TransformerPrimitiveBase[Inputs, Outputs, Hype
             stopC=max(np.linalg.norm(Z_new-Z,'fro')/np.linalg.norm(Z_new,'fro'),np.linalg.norm(A_new-A,'fro')/np.linalg.norm(A_new,'fro'))
             isstopC=stopC<tol
 
-            if np.mod(iter,100)==0 or isstopC or iter==1:
-                obj_func=0.5*np.linalg.norm(np.multiply(M,X-np.dot(A_new,Z_new)),'fro')**2+0.5*alpha*np.linalg.norm(A_new,'fro')**2+beta*abs(Z_new).sum()
-                print('iteration: %d/%d, obj_func=%f, var_change=%f.' % (iter,maxiter,obj_func,stopC))
+            #if np.mod(iter,200)==0 or isstopC or iter==1:
+                #obj_func=0.5*np.linalg.norm(np.multiply(M,X-np.dot(A_new,Z_new)),'fro')**2+0.5*alpha*np.linalg.norm(A_new,'fro')**2+beta*abs(Z_new).sum()
+                #print('iteration: %d/%d, obj_func=%f, var_change=%f.' % (iter,maxiter,obj_func,stopC))
 
             if isstopC:
                 Z=Z_new;
                 A=A_new;
-                print('converged!')
+                #print('converged!')
                 break
 
             Z_old=Z
@@ -169,10 +176,11 @@ class HighRankImputer(transformer.TransformerPrimitiveBase[Inputs, Outputs, Hype
         D=abs(Z)>1e-5
         D=D+0
 
-        print('The proportion of nonzero entries in the sparse coefficient matrix is %f.' % (D.sum()/D.shape[0]/D.shape[1]))
+        #print('The proportion of nonzero entries in the sparse coefficient matrix is %f.' % (D.sum()/D.shape[0]/D.shape[1]))
 
         Xr = np.multiply(X,M)+np.multiply(np.dot(A,Z),1-M)
-        Xr = Xr.T
+        if m0>n0:
+            Xr = Xr.T
         
         outputs = pd.DataFrame(Xr, self._index, self._keys)
         outputs.metadata = inputs.metadata
