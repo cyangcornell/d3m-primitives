@@ -118,8 +118,9 @@ class LowRankImputer(transformer.TransformerPrimitiveBase[Inputs, Outputs, Hyper
         julia_components_delayed_import()
 
         columns_to_drop = list(np.where(np.array(np.sum(np.invert(np.isnan(inputs))))==0)[0])
-
-        inputs.drop(columns=inputs.columns[columns_to_drop], inplace=True)
+        
+        if len(columns_to_drop):
+            inputs.drop(columns=inputs.columns[columns_to_drop], inplace=True)
 #        obs = list(zip(*np.where(np.invert(np.isnan(inputs.values)))))
 #        obs = [(item[0]+1, item[1]+1) for item in obs]
 #        j.obs = obs
@@ -135,6 +136,7 @@ class LowRankImputer(transformer.TransformerPrimitiveBase[Inputs, Outputs, Hyper
         self._Y = Y
         A = np.dot(self._X.T, self._Y)
         outputs = container.DataFrame(A, index=self._index, columns=self._keys)
-        outputs.metadata = remove_columns_metadata(inputs.metadata, columns_to_drop)
+        if len(columns_to_drop):
+            outputs.metadata = remove_columns_metadata(inputs.metadata, columns_to_drop)
         
         return CallResult(outputs)
