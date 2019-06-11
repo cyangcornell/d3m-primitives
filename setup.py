@@ -107,8 +107,8 @@ setup(
   entry_points = {
     'd3m.primitives':
       [
-       'cornell.pyglrm_d3m.huber_pca = pyglrm_d3m.huber_pca:HuberPCA',
-       'cornell.pyglrm_d3m.low_rank_imputer = pyglrm_d3m.low_rank_imputer:LowRankImputer',
-       'cornell.high_rank_imputer = high_rank_imputer:HighRankImputer'],
+       'feature_extraction.huber_pca.Cornell = pyglrm_d3m.huber_pca:HuberPCA',
+       'data_preprocessing.low_rank_imputer.Cornell = pyglrm_d3m.low_rank_imputer:LowRankImputer',
+       'collaborative_filtering.high_rank_imputer.Cornell = high_rank_imputer:HighRankImputer'],
       }
   )

@@ -97,7 +97,7 @@ class LowRankImputer(transformer.TransformerPrimitiveBase[Inputs, Outputs, Hyper
 
         }],
 
-        'python_path': 'd3m.primitives.cornell.pyglrm_d3m.low_rank_imputer',
+        'python_path': 'd3m.primitives.data_preprocessing.low_rank_imputer.Cornell',
 
         'algorithm_types': [
             metadata_base.PrimitiveAlgorithmType.LOW_RANK_MATRIX_APPROXIMATIONS,

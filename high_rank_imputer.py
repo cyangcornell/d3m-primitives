@@ -28,7 +28,7 @@ class Hyperparams(hyperparams.Hyperparams):
     tol = hyperparams.Hyperparameter(default=1e-4,
                                      description='The tolerance of the relative changes of the variables in optimization. It will be utilized to check the convergence.',
                                      semantic_types=['https://metadata.datadrivendiscovery.org/types/TuningParameter'])
-    maxiter = hyperparams.Hyperparameter(default=500,
+    maxiter = hyperparams.Hyperparameter(default=200,
                                          description='The maximum number of iterations.',
                                          semantic_types=['https://metadata.datadrivendiscovery.org/types/TuningParameter'])
     alpha = hyperparams.Hyperparameter(default=1.0,
@@ -63,7 +63,7 @@ class HighRankImputer(SupervisedLearnerPrimitiveBase[Inputs, Outputs, Params, Hy
                         'package_uri': 'git+https://github.com/cyangcornell/d3m-primitives.git@{git_commit}#egg=pyglrm-d3m'.format(git_commit=utils.current_git_commit(os.path.dirname(__file__)))
                         
                         }],
-        'python_path': 'd3m.primitives.cornell.high_rank_imputer',
+        'python_path': 'd3m.primitives.collaborative_filtering.high_rank_imputer.Cornell',
 
         'algorithm_types': [
             metadata_base.PrimitiveAlgorithmType.LOW_RANK_MATRIX_APPROXIMATIONS,
@@ -91,19 +91,22 @@ class HighRankImputer(SupervisedLearnerPrimitiveBase[Inputs, Outputs, Params, Hy
         
     def fit(self, *, timeout: float = None, iterations: int = None) -> CallResult[None]:
         x_rating=self._training_inputs
-        x_rating['rating']=self._training_outputs
+        x_rating['rating']=self._training_outputs.copy()
         X_incomplete=x_rating.pivot(index=x_rating.columns[0], columns=x_rating.columns[1], values=x_rating.columns[2])
         
         tol=self.tol
         maxiter=self.maxiter
         
         X=X_incomplete.values.copy()
-        
+       # X=X_incomplete.values
+        #print(X)
+       # print(X_incomplete)
         m0,n0 = X.shape
         if m0>n0:
             X = X.T
         
         m,n = X.shape  
+          
         
         M=np.ones([m,n])
         M[np.isnan(X)]=0
@@ -115,13 +118,13 @@ class HighRankImputer(SupervisedLearnerPrimitiveBase[Inputs, Outputs, Params, Hy
             if sr>0.5:
                 d=np.int(np.round(0.25*min(m,n)))
             else:
-                d=np.int(3*np.round(sr*min(m,n)))
+                d=np.int(4*np.round(sr*min(m,n)))
             #print('The auto-estimated latent dimension is %d.' % d)
         else:
             d=self.d
             #print('The user-defined latent dimension is %d.' % d)
          
-        alpha=self.alpha*np.sqrt(max(m,n)/d)
+        alpha=self.alpha*np.sqrt(max(m,n)/d)*2
         beta=self.beta*np.sqrt(max(m,n)/d)
         
         A=np.random.randn(m,d)
@@ -159,11 +162,12 @@ class HighRankImputer(SupervisedLearnerPrimitiveBase[Inputs, Outputs, Params, Hy
             stopC=max(np.linalg.norm(Z_new-Z,'fro')/np.linalg.norm(Z_new,'fro'),np.linalg.norm(A_new-A,'fro')/np.linalg.norm(A_new,'fro'))
             isstopC=stopC<tol
 
-            """
-            if np.mod(iter,50)==0 or isstopC or iter==1:
+            """ 
+            if np.mod(iter,10)==0 or isstopC or iter==1:
                 obj_func=0.5*np.linalg.norm(np.multiply(M,X-np.dot(A_new,Z_new)),'fro')**2+0.5*alpha*np.linalg.norm(A_new,'fro')**2+beta*abs(Z_new).sum()
                 print('iteration: %d/%d, obj_func=%f, var_change=%f.' % (iter,maxiter,obj_func,stopC))
             """
+
             if isstopC:
                 Z=Z_new;
                 A=A_new;
@@ -194,9 +198,23 @@ class HighRankImputer(SupervisedLearnerPrimitiveBase[Inputs, Outputs, Params, Hy
         y_pred=np.zeros(testData.shape[0])+X.values.mean()
         idr=testData[testData.columns[0]].isin(X.index)
         idc=testData[testData.columns[1]].isin(X.columns)
-        dd=np.where(idr*idc==True)
+        dd=np.where(idr&idc==True)
+        #print(type(X.columns[1]))
+        #print(X.columns.get_loc(np.str(5)))
+       # ee=np.where(testData[testData.columns[0]].isin(X.index)&testData[testData.columns[1]].isin(X.columns))
+        #print(X)        
         for i in dd[0]:
-            y_pred[i] = X.values[X.index.get_loc(int(testData.values[i,0])),X.columns.get_loc(int(testData.values[i,1]))]
+            tpc=testData.values[i,1]
+            #tp=np.where(X.columns==tpc)
+            id_col=X.columns.get_loc(np.str(tpc))
+
+            tpr=testData.values[i,0]
+            #tp=np.where(X.index==tpr)
+            id_row=X.index.get_loc(np.str(tpr))
+            
+            y_pred[i] = X.values[id_row,id_col]
+           # if np.mod(i,50000)==0:
+           #     print(i)
 
         self._index = inputs.index
         outputs = pd.DataFrame(y_pred, self._index, self._keys)

@@ -102,7 +102,7 @@ class HuberPCA(unsupervised_learning.UnsupervisedLearnerPrimitiveBase[Inputs, Ou
 
         }],
 
-        'python_path': 'd3m.primitives.cornell.pyglrm_d3m.huber_pca',
+        'python_path': 'd3m.primitives.feature_extraction.huber_pca.Cornell',
 
         'algorithm_types': [
             metadata_base.PrimitiveAlgorithmType.LOW_RANK_MATRIX_APPROXIMATIONS,
