@@ -81,17 +81,20 @@ class HighRankImputer(SupervisedLearnerPrimitiveBase[Inputs, Outputs, Params, Hy
         self.alpha: float = hyperparams['alpha']
         self.beta: float = hyperparams['beta']
             
+
     def set_training_data(self, *, inputs: Inputs, outputs: Outputs) -> None:
         self._training_inputs = inputs
         self._training_outputs = outputs
         self._fitted = False
         self._keys = list(outputs)
-        
-        
+        self._fitted = False
         
     def fit(self, *, timeout: float = None, iterations: int = None) -> CallResult[None]:
-        x_rating=self._training_inputs
-        x_rating['rating']=self._training_outputs.copy()
+        if self._fitted: 
+            return
+
+        x_rating=self._training_inputs.copy()
+        x_rating[self._training_outputs.columns[0]]=self._training_outputs.values
         X_incomplete=x_rating.pivot(index=x_rating.columns[0], columns=x_rating.columns[1], values=x_rating.columns[2])
         
         tol=self.tol
@@ -189,32 +192,37 @@ class HighRankImputer(SupervisedLearnerPrimitiveBase[Inputs, Outputs, Params, Hy
         #print('The proportion of nonzero entries in the sparse coefficient matrix is %f.' % (D.sum()/D.shape[0]/D.shape[1]))
         self._X=pd.DataFrame(X_temp,X_incomplete.index,X_incomplete.columns)               
         
+        self._fitted = True
         return CallResult(None)
         
     def produce(self, *, inputs: Inputs, timeout: float = None, iterations: int = None) -> base.CallResult[Outputs]:
         
-        X = self._X
+        Xp = self._X
         testData = inputs
-        y_pred=np.zeros(testData.shape[0])+X.values.mean()
-        idr=testData[testData.columns[0]].isin(X.index)
-        idc=testData[testData.columns[1]].isin(X.columns)
+        y_pred=np.zeros(testData.shape[0])#+Xp.values.mean()
+        idr=testData[testData.columns[0]].isin(Xp.index)
+        idc=testData[testData.columns[1]].isin(Xp.columns)
         dd=np.where(idr&idc==True)
         #print(type(X.columns[1]))
         #print(X.columns.get_loc(np.str(5)))
        # ee=np.where(testData[testData.columns[0]].isin(X.index)&testData[testData.columns[1]].isin(X.columns))
-        #print(X)        
+        #print(X)
+        
+        
         for i in dd[0]:
             tpc=testData.values[i,1]
             #tp=np.where(X.columns==tpc)
-            id_col=X.columns.get_loc(np.str(tpc))
+            id_col=Xp.columns.get_loc(np.str(tpc))
 
             tpr=testData.values[i,0]
             #tp=np.where(X.index==tpr)
-            id_row=X.index.get_loc(np.str(tpr))
+            id_row=Xp.index.get_loc(np.str(tpr))
             
-            y_pred[i] = X.values[id_row,id_col]
-           # if np.mod(i,50000)==0:
-           #     print(i)
+            y_pred[i] = Xp.values[id_row,id_col]
+          #  y_pred[i] = 0
+           # if np.mod(i,10000)==0:
+               # print(i)
+        
 
         self._index = inputs.index
         outputs = pd.DataFrame(y_pred, self._index, self._keys)
