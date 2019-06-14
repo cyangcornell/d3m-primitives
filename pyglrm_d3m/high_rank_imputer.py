@@ -117,8 +117,8 @@ class HighRankImputer(SupervisedLearnerPrimitiveBase[Inputs, Outputs, Params, Hy
         else:
             d=self.d
 
-        alpha=self.alpha*np.sqrt(max(m,n)/d)*2
-        beta=self.beta*np.sqrt(max(m,n)/d)
+        alpha=self.alpha*n/d
+        beta=self.beta*np.sqrt(n/d)
 
         A=np.random.randn(m,d)
         Z=np.zeros((d,n))
@@ -216,8 +216,8 @@ class HighRankImputer(SupervisedLearnerPrimitiveBase[Inputs, Outputs, Params, Hy
             else:
                 d=self.d
 
-            alpha=self.alpha*np.sqrt(max(m,n)/d)*2*0.1
-            beta=self.beta*np.sqrt(max(m,n)/d)*0.1
+            alpha=self.alpha*n/d*0.1
+            beta=self.beta*np.sqrt(n/d)*0.1
 
             A=np.random.randn(m,d)
             Z=np.zeros((d,n))
