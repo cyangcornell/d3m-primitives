@@ -73,6 +73,11 @@ class Hyperparams(hyperparams.Hyperparams):
                                    description='Maximum rank of the decomposed matrices. For example, if the matrix A to be decomposed is m-by-n, then after decomposition A≈XY, X is m-by-k, Y is k-by-n. ',
                                    semantic_types=['https://metadata.datadrivendiscovery.org/types/TuningParameter'])
                                    
+    # threshold for the Huber loss crossover
+    huber_crossover = hyperparams.Hyperparameter(default=1.0,
+                                                 description='Crossover for the Huber loss.',
+                                                 semantic_types=                    ['https://metadata.datadrivendiscovery.org/types/TuningParameter'])
+                                   
     # The type of regularizer for X
     rx = hyperparams.Hyperparameter(default='ZeroReg',
                                     description='Regularizer for X.',
@@ -155,6 +160,7 @@ class HuberPCA(unsupervised_learning.UnsupervisedLearnerPrimitiveBase[Inputs, Ou
         elif hyperparams['ry'] == 'QuadReg':
             self._ry = QuadReg(scale=hyperparams['lambda_y'])
         
+        self.huber_crossover = huber_crossover
         self._training_inputs: Inputs = None
         self._training_outputs: Outputs = None
         self._index = None
@@ -180,7 +186,7 @@ class HuberPCA(unsupervised_learning.UnsupervisedLearnerPrimitiveBase[Inputs, Ou
 
     def set_training_data(self, *, inputs: Inputs) -> None:
         julia_components_delayed_import()
-        self._losses = HuberLoss()
+        self._losses = HuberLoss(crossover=self.huber_crossover)
 #        self._rx = ZeroReg()
 #        self._ry = ZeroReg()
         self._training_inputs = inputs.values
