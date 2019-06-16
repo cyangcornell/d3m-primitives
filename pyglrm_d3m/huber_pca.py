@@ -72,6 +72,28 @@ class Hyperparams(hyperparams.Hyperparams):
     k = hyperparams.Hyperparameter(default=2,
                                    description='Maximum rank of the decomposed matrices. For example, if the matrix A to be decomposed is m-by-n, then after decomposition A≈XY, X is m-by-k, Y is k-by-n. ',
                                    semantic_types=['https://metadata.datadrivendiscovery.org/types/TuningParameter'])
+                                   
+    # The type of regularizer for X
+    rx = hyperparams.Hyperparameter(default='ZeroReg',
+                                    description='Regularizer for X.',
+                                    semantic_types=                                 ['https://metadata.datadrivendiscovery.org/types/TuningParameter'])
+
+    # The type of regularizer for Y
+    ry = hyperparams.Hyperparameter(default='ZeroReg',
+                                    description='Regularizer for Y.',
+                                    semantic_types=                                 ['https://metadata.datadrivendiscovery.org/types/TuningParameter'])
+
+
+    # The coefficient of rx
+    lambda_x = hyperparams.Hyperparameter(default=1,
+                                    description='Coefficient of rx.',
+                                semantic_types=                                 ['https://metadata.datadrivendiscovery.org/types/TuningParameter'])
+
+
+    # The coefficient of ry
+    lambda_y = hyperparams.Hyperparameter(default=1,
+                                          description='Coefficient of ry.',
+                                          semantic_types=                                 ['https://metadata.datadrivendiscovery.org/types/TuningParameter'])
 
 
 #The HuberPCA primitive.
@@ -121,9 +143,18 @@ class HuberPCA(unsupervised_learning.UnsupervisedLearnerPrimitiveBase[Inputs, Ou
 #        super().__init__(hyperparams=hyperparams, random_seed=random_seed, docker_containers=docker_containers)
 
     def __init__(self, *, hyperparams: Hyperparams) -> None:
-
         super().__init__(hyperparams=hyperparams)
+        julia_components_delayed_import()
         self._k: float = hyperparams['k']
+        if hyperparams['rx'] == 'ZeroReg':
+            self._rx = ZeroReg()
+        elif hyperparams['rx'] == 'QuadReg':
+            self._rx = QuadReg(scale=hyperparams['lambda_x'])        
+        if hyperparams['ry'] == 'ZeroReg':
+            self._ry = ZeroReg()
+        elif hyperparams['ry'] == 'QuadReg':
+            self._ry = QuadReg(scale=hyperparams['lambda_y'])
+        
         self._training_inputs: Inputs = None
         self._training_outputs: Outputs = None
         self._index = None
@@ -150,8 +181,8 @@ class HuberPCA(unsupervised_learning.UnsupervisedLearnerPrimitiveBase[Inputs, Ou
     def set_training_data(self, *, inputs: Inputs) -> None:
         julia_components_delayed_import()
         self._losses = HuberLoss()
-        self._rx = ZeroReg()
-        self._ry = ZeroReg()
+#        self._rx = ZeroReg()
+#        self._ry = ZeroReg()
         self._training_inputs = inputs.values
         self._index = inputs.index
         self._header = list(inputs)
