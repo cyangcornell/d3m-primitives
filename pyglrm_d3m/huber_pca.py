@@ -85,13 +85,13 @@ class Hyperparams(hyperparams.Hyperparams):
 
 
     # The coefficient of rx
-    lambda_x = hyperparams.Hyperparameter(default=1,
+    lambda_x = hyperparams.Hyperparameter(default=1.0,
                                     description='Coefficient of rx.',
                                 semantic_types=                                 ['https://metadata.datadrivendiscovery.org/types/TuningParameter'])
 
 
     # The coefficient of ry
-    lambda_y = hyperparams.Hyperparameter(default=1,
+    lambda_y = hyperparams.Hyperparameter(default=1.0,
                                           description='Coefficient of ry.',
                                           semantic_types=                                 ['https://metadata.datadrivendiscovery.org/types/TuningParameter'])
 
