@@ -20,7 +20,8 @@ __author__ = 'Cornell'
 __version__ = 'v0.1.1'
 
 class Params(params.Params):
-    X: ndarray 
+    X: ndarray
+    A: ndarray
 class Hyperparams(hyperparams.Hyperparams):
     d = hyperparams.Hyperparameter(default=0,
                                    description='The reduced dimension of matrix factorization. It is usually smaller than the sizes of the matrix. When setting to 0, d will be automatically roughly estimated.',
@@ -81,7 +82,7 @@ class HighRankImputer(SupervisedLearnerPrimitiveBase[Inputs, Outputs, Params, Hy
         self.alpha: float = hyperparams['alpha']
         self.beta: float = hyperparams['beta']
         self._fitted = False
-        self._MC = False
+        self._CF = False
 
     def set_training_data(self, *, inputs: Inputs, outputs: Outputs) -> None:
         self._training_inputs = inputs
@@ -94,98 +95,100 @@ class HighRankImputer(SupervisedLearnerPrimitiveBase[Inputs, Outputs, Params, Hy
         if self._fitted: 
             return
         
-        Vt=self._training_outputs.values        
+        Vt=self._training_inputs.values        
         if Vt.shape[1]>3:
-            self._fitted = True
-            self._X = 0
+            X_incomplete=self._training_inputs.copy()
+            X=self._training_inputs.values.copy()
+            X=X.T 
+            m0=1
+            n0=0
         else:
+            self._CF=True
             x_rating=self._training_inputs.copy()
             x_rating[self._training_outputs.columns[0]]=self._training_outputs.values
             X_incomplete=x_rating.pivot(index=x_rating.columns[0], columns=x_rating.columns[1], values=x_rating.columns[2])
-
             X=X_incomplete.values.copy()
-            tol=self.tol
-            maxiter=self.maxiter
             m0,n0 = X.shape
             if m0>n0:
                 X = X.T
+                
+        tol=self.tol
+        maxiter=self.maxiter
+        m,n = X.shape
+        M=np.ones([m,n])
+        M[np.isnan(X)]=0
+        sr=M.sum()/m/n
+        X[np.isnan(X)]=0
 
-            m,n = X.shape
-            M=np.ones([m,n])
-            M[np.isnan(X)]=0
-            sr=M.sum()/m/n
-            X[np.isnan(X)]=0
-
-            if self.d==0:
-                if sr>0.5:
-                    d=np.int(np.round(0.5*min(m,n)))
-                else:
-                    d=np.int(3*np.round(sr*min(m,n)))
+        if self.d==0:
+            if sr>0.5:
+                d=np.int(np.round(0.5*min(m,n)))
             else:
-                d=self.d
+                d=np.int(3*np.round(sr*min(m,n)))
+        else:
+            d=self.d
 
-            alpha=self.alpha*n/d
-            beta=self.beta*np.sqrt(n/d)
+        alpha=self.alpha*n/d
+        beta=self.beta*np.sqrt(n/d)
+        self._beta=beta
+        self._d=d
+        A=np.random.randn(m,d)
+        Z=np.zeros((d,n))
+        rho=max(1.5*np.sqrt(M.mean()),0.5)
+        iter=0
+        cc=0.5
 
-            A=np.random.randn(m,d)
-            Z=np.zeros((d,n))
-            rho=max(1.5*np.sqrt(M.mean()),0.5)
-            iter=0
-            cc=0.5
+        while iter<self.maxiter:
+            iter=iter+1
+            # Z_new
+            if iter==1:
+                Z=Z
+            else:
+                Z=Z_new+cc*(Z_new-Z_old)
 
-            while iter<self.maxiter:
+            tau=rho*np.linalg.norm(np.dot(A.T,A),2)
+            G=Z-(-np.dot(A.T,np.multiply(M,X-np.dot(A,Z))))/tau
+            Z_new=np.maximum(0,G-beta/tau)+np.minimum(0,G+beta/tau)
 
-                iter=iter+1
+            # A_new
+            if iter==1:
+                A=A
+            else:
+                A=A_new+cc*(A_new-A_old)
 
-                # Z_new
-                if iter==1:
-                    Z=Z
-                else:
-                    Z=Z_new+cc*(Z_new-Z_old)
+            kai=rho*np.linalg.norm(np.dot(Z_new,Z_new.T),2)
+            H=A+np.dot(np.multiply(M,X-np.dot(A,Z_new)),Z_new.T)/kai;
+            A_new=1/(alpha+kai)*H*kai;
 
-                tau=rho*np.linalg.norm(np.dot(A.T,A),2)
-                G=Z-(-np.dot(A.T,np.multiply(M,X-np.dot(A,Z))))/tau
-                Z_new=np.maximum(0,G-beta/tau)+np.minimum(0,G+beta/tau)
+            # check convergence
+            stopC=max(np.linalg.norm(Z_new-Z,'fro')/np.linalg.norm(Z_new,'fro'),np.linalg.norm(A_new-A,'fro')/np.linalg.norm(A_new,'fro'))
+            isstopC=stopC<tol
 
-                # A_new
-                if iter==1:
-                    A=A
-                else:
-                    A=A_new+cc*(A_new-A_old)
+            if isstopC:
+                Z=Z_new;
+                A=A_new;
+                break
+            Z_old=Z
+            A_old=A
+            Z=Z_new
+            A=A_new
 
-                kai=rho*np.linalg.norm(np.dot(Z_new,Z_new.T),2)
-                H=A+np.dot(np.multiply(M,X-np.dot(A,Z_new)),Z_new.T)/kai;
-                A_new=1/(alpha+kai)*H*kai;
+        #X_temp=np.multiply(X,M)+np.multiply(np.dot(A,Z),1-M)
+        X_temp=np.dot(A,Z)
 
-                # check convergence
-                stopC=max(np.linalg.norm(Z_new-Z,'fro')/np.linalg.norm(Z_new,'fro'),np.linalg.norm(A_new-A,'fro')/np.linalg.norm(A_new,'fro'))
-                isstopC=stopC<tol
-
-                if isstopC:
-                    Z=Z_new;
-                    A=A_new;
-                    break
-                Z_old=Z
-                A_old=A
-                Z=Z_new
-                A=A_new
-
-            #X_temp=np.multiply(X,M)+np.multiply(np.dot(A,Z),1-M)
-            X_temp=np.dot(A,Z)
-
-            if m0>n0:
-                X_temp = X_temp.T
-
-            #self._X=pd.DataFrame(X_temp,X_incomplete.index,X_incomplete.columns) 
-            self._X=container.DataFrame(X_temp, index=X_incomplete.index, columns=X_incomplete.columns)        
-            self._fitted = True
-            self._MC = True
+        if m0>n0:
+            X_temp = X_temp.T
+            
+        self._A=A
+        #self._X=pd.DataFrame(X_temp,X_incomplete.index,X_incomplete.columns) 
+        self._X=container.DataFrame(X_temp, index=X_incomplete.index, columns=X_incomplete.columns)        
+        self._fitted = True
 
         return CallResult(None)
         
     def produce(self, *, inputs: Inputs, timeout: float = None, iterations: int = None) -> base.CallResult[Outputs]:
         testData = inputs
-        if self._fitted and self._MC: 
+        if self._CF: 
             Xp = self._X
             y_pred=np.zeros(testData.shape[0])+Xp.values.mean()
             idr=testData[testData.columns[0]].isin(Xp.index)
@@ -206,33 +209,19 @@ class HighRankImputer(SupervisedLearnerPrimitiveBase[Inputs, Outputs, Params, Hy
             X=inputs.values.copy()
             tol=self.tol
             maxiter=self.maxiter
-            m0,n0 = X.shape
-            if m0>n0:
-                X = X.T
-
+            X = X.T
             m,n = X.shape
             M=np.ones([m,n])
             M[np.isnan(X)]=0
             sr=M.sum()/m/n
             X[np.isnan(X)]=0
-
-            if self.d==0:
-                if sr>0.5:
-                    d=np.int(np.round(0.5*min(m,n)))
-                else:
-                    d=np.int(3*np.round(sr*min(m,n)))
-            else:
-                d=self.d
-
-            alpha=self.alpha*n/d*0.1
-            beta=self.beta*np.sqrt(n/d)*0.1
-
-            A=np.random.randn(m,d)
+            beta=self._beta
+            d=self._d
+            A=self._A
             Z=np.zeros((d,n))
             rho=max(1.5*np.sqrt(M.mean()),0.5)
             iter=0
             cc=0.5
-
             while iter<self.maxiter:
 
                 iter=iter+1
@@ -247,35 +236,21 @@ class HighRankImputer(SupervisedLearnerPrimitiveBase[Inputs, Outputs, Params, Hy
                 G=Z-(-np.dot(A.T,np.multiply(M,X-np.dot(A,Z))))/tau
                 Z_new=np.maximum(0,G-beta/tau)+np.minimum(0,G+beta/tau)
 
-                # A_new
-                if iter==1:
-                    A=A
-                else:
-                    A=A_new+cc*(A_new-A_old)
-
-                kai=rho*np.linalg.norm(np.dot(Z_new,Z_new.T),2)
-                H=A+np.dot(np.multiply(M,X-np.dot(A,Z_new)),Z_new.T)/kai;
-                A_new=1/(alpha+kai)*H*kai;
-
                 # check convergence
-                stopC=max(np.linalg.norm(Z_new-Z,'fro')/np.linalg.norm(Z_new,'fro'),np.linalg.norm(A_new-A,'fro')/np.linalg.norm(A_new,'fro'))
+                stopC=np.linalg.norm(Z_new-Z,'fro')/np.linalg.norm(Z_new,'fro')
                 isstopC=stopC<tol
 
                 if isstopC:
                     Z=Z_new;
-                    A=A_new;
                     break
                 
                 Z_old=Z
-                A_old=A
                 Z=Z_new
-                A=A_new
 
             #X_temp=np.multiply(X,M)+np.multiply(np.dot(A,Z),1-M)
             X_temp=np.dot(A,Z)
 
-            if m0>n0:
-                X_temp = X_temp.T
+            X_temp = X_temp.T
 
             outputs = container.DataFrame(X_temp, index=testData.index, columns=testData.columns)
             
@@ -290,4 +265,6 @@ class HighRankImputer(SupervisedLearnerPrimitiveBase[Inputs, Outputs, Params, Hy
 
     def set_params(self, *, params: Params) -> None:
         self._X = params.X
+
+
 
