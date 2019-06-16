@@ -160,7 +160,7 @@ class HuberPCA(unsupervised_learning.UnsupervisedLearnerPrimitiveBase[Inputs, Ou
         elif hyperparams['ry'] == 'QuadReg':
             self._ry = QuadReg(scale=hyperparams['lambda_y'])
         
-        self.huber_crossover = huber_crossover
+        self.huber_crossover = hyperparams['huber_crossover']
         self._training_inputs: Inputs = None
         self._training_outputs: Outputs = None
         self._index = None
