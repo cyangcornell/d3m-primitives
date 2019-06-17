@@ -1,109 +1,48 @@
-import os
-import ctypes
-ctypes.CDLL("/opt/julia_files/julia-903644385b/lib/julia/libstdc++.so.6", os.RTLD_DEEPBIND)
+import os.path
+from typing import Union,Dict
 
-import typing
 import numpy as np
 import pandas as pd
+from d3m import container
+from d3m.container import ndarray
+from d3m import utils
 
-## Python-wrapped Julia and GLRM components
-#global QuadLoss, L1Loss, HuberLoss
-#global ZeroReg, NonNegOneReg, QuadReg, NonNegConstraint
-#global j
-#from . import loss_reg
-#
-#QuadLoss = loss_reg.QuadLoss
-#L1Loss = loss_reg.L1Loss
-#HuberLoss = loss_reg.HuberLoss
-#ZeroReg = loss_reg.ZeroReg
-#NonNegOneReg = loss_reg.NonNegOneReg
-#QuadReg = loss_reg.QuadReg
-#NonNegConstraint = loss_reg.NonNegConstraint
-#j = loss_reg.j
-
-# d3m modules
-from d3m import container, utils
+from d3m.metadata import hyperparams, base as metadata_base, params
+from d3m.primitive_interfaces import base, transformer
+from d3m.primitive_interfaces.base import CallResult,DockerContainer
 from d3m.metadata import hyperparams, base as metadata_base, params
 from d3m.primitive_interfaces import base, unsupervised_learning
-
-__author__ = 'Cornell'
-__version__ = 'v0.1.1'
-
-#__all__ = ('HuberPCA',)
-
 Inputs = container.DataFrame
 Outputs = container.DataFrame
 
 
-# This function allows us to delay the import process for Julia components to
-# avoid up front overhead.
-julia_components_loaded = False
-def julia_components_delayed_import():
-# Only perform  the import once.
-    global julia_components_loaded
-    if julia_components_loaded:
-        return
-    else:
-        julia_components_loaded = True
+__author__ = 'Cornell'
+__version__ = 'v0.1.1'
 
-    # Now import and define the symbols we want:
-    global QuadLoss, L1Loss, HuberLoss
-    global ZeroReg, NonNegOneReg, QuadReg, NonNegConstraint
-    global j
-    from . import loss_reg
-
-    QuadLoss = loss_reg.QuadLoss
-    L1Loss = loss_reg.L1Loss
-    HuberLoss = loss_reg.HuberLoss
-    ZeroReg = loss_reg.ZeroReg
-    NonNegOneReg = loss_reg.NonNegOneReg
-    QuadReg = loss_reg.QuadReg
-    NonNegConstraint = loss_reg.NonNegConstraint
-    j = loss_reg.j
-
-
-#Parameter class.
 class Params(params.Params):
-    Y: typing.Union[container.DataFrame, pd.DataFrame]
-
-#Hyperparameter class.
+    A: ndarray
 class Hyperparams(hyperparams.Hyperparams):
-    #The number of dimensions of the latent representation.
-    k = hyperparams.Hyperparameter(default=2,
-                                   description='Maximum rank of the decomposed matrices. For example, if the matrix A to be decomposed is m-by-n, then after decomposition A≈XY, X is m-by-k, Y is k-by-n. ',
+    d = hyperparams.Hyperparameter(default=10,
+                                   description='The reduced dimension of matrix factorization. It is usually smaller than the sizes of the matrix. When setting to 0, d will be automatically roughly estimated.',
                                    semantic_types=['https://metadata.datadrivendiscovery.org/types/TuningParameter'])
-                                   
-    # threshold for the Huber loss crossover
-    huber_crossover = hyperparams.Hyperparameter(default=1.0,
-                                                 description='Crossover for the Huber loss.',
-                                                 semantic_types=                    ['https://metadata.datadrivendiscovery.org/types/TuningParameter'])
-                                   
-    # The type of regularizer for X
-    rx = hyperparams.Hyperparameter(default='ZeroReg',
-                                    description='Regularizer for X.',
-                                    semantic_types=                                 ['https://metadata.datadrivendiscovery.org/types/TuningParameter'])
+    epsilon = hyperparams.Hyperparameter(default=1.0,
+                                   description='The parameter of huber function.',
+                                   semantic_types=['https://metadata.datadrivendiscovery.org/types/TuningParameter'])
+    t = hyperparams.Hyperparameter(default=0.001,
+                                   description='Step size.',
+                                   semantic_types=['https://metadata.datadrivendiscovery.org/types/TuningParameter'])
 
-    # The type of regularizer for Y
-    ry = hyperparams.Hyperparameter(default='ZeroReg',
-                                    description='Regularizer for Y.',
-                                    semantic_types=                                 ['https://metadata.datadrivendiscovery.org/types/TuningParameter'])
-
-
-    # The coefficient of rx
-    lambda_x = hyperparams.Hyperparameter(default=1.0,
-                                    description='Coefficient of rx.',
-                                semantic_types=                                 ['https://metadata.datadrivendiscovery.org/types/TuningParameter'])
-
-
-    # The coefficient of ry
-    lambda_y = hyperparams.Hyperparameter(default=1.0,
-                                          description='Coefficient of ry.',
-                                          semantic_types=                                 ['https://metadata.datadrivendiscovery.org/types/TuningParameter'])
-
-
-#The HuberPCA primitive.
+    tol = hyperparams.Hyperparameter(default=1e-4,
+                                     description='The tolerance of the relative changes of the variables in optimization. It will be utilized to check the convergence.',
+                                     semantic_types=['https://metadata.datadrivendiscovery.org/types/TuningParameter'])
+    maxiter = hyperparams.Hyperparameter(default=500,
+                                         description='The maximum number of iterations.',
+                                         semantic_types=['https://metadata.datadrivendiscovery.org/types/TuningParameter'])
+    alpha = hyperparams.Hyperparameter(default=1.0,
+                                       description='The regularization parameter for the factorized dense matrix A.',
+                                       semantic_types=['https://metadata.datadrivendiscovery.org/types/TuningParameter'])
+   
 class HuberPCA(unsupervised_learning.UnsupervisedLearnerPrimitiveBase[Inputs, Outputs, Params, Hyperparams]):
-    
     """
         By Huber PCA, this primitive gets low rank representation of the original dataset via Huber loss (rather than the L2 loss in standard PCA), and is thus more robust to outliers. 
     """
@@ -143,95 +82,115 @@ class HuberPCA(unsupervised_learning.UnsupervisedLearnerPrimitiveBase[Inputs, Ou
     })
 
 
-#    def __init__(self, *, hyperparams: Hyperparams, random_seed: int = 0, docker_containers: typing.Dict[str, str] = None) -> None:
+    def __init__(self, *, hyperparams: Hyperparams, docker_containers: Dict[str,DockerContainer] = None, _versbose: int = 0) -> None:
 
-#        super().__init__(hyperparams=hyperparams, random_seed=random_seed, docker_containers=docker_containers)
-
-    def __init__(self, *, hyperparams: Hyperparams) -> None:
-        super().__init__(hyperparams=hyperparams)
-        julia_components_delayed_import()
-        self._k: float = hyperparams['k']
-        if hyperparams['rx'] == 'ZeroReg':
-            self._rx = ZeroReg()
-        elif hyperparams['rx'] == 'QuadReg':
-            self._rx = QuadReg(scale=hyperparams['lambda_x'])        
-        if hyperparams['ry'] == 'ZeroReg':
-            self._ry = ZeroReg()
-        elif hyperparams['ry'] == 'QuadReg':
-            self._ry = QuadReg(scale=hyperparams['lambda_y'])
+        super().__init__(hyperparams=hyperparams, docker_containers = docker_containers)
         
-        self.huber_crossover = hyperparams['huber_crossover']
-        self._training_inputs: Inputs = None
-        self._training_outputs: Outputs = None
-        self._index = None
-        self._header = None
-        self._fitted: bool = False
-
-    def get_params(self) -> Params:
-        try:
-            Y_output = pd.DataFrame(self._Y, columns=self._header)
-            return Params(Y=Y_output)
-        except:
-            raise Exception('Initial GLRM fitting not executed!')
-
-    def set_params(self, *, params: Params) -> None:
-        self._Y = params['Y'].values
-        self._header = list(params['Y'])
-
-    def get_hyperparams(self) -> Hyperparams:
-        return Hyperparams(k=self._k)
-
-    def set_hyperparams(self, *, hyperparams: Hyperparams) -> None:
-        self._k = hyperparams['k']
-
-    def set_training_data(self, *, inputs: Inputs) -> None:
-        julia_components_delayed_import()
-        self._losses = HuberLoss(crossover=self.huber_crossover)
-#        self._rx = ZeroReg()
-#        self._ry = ZeroReg()
-        self._training_inputs = inputs.values
-        self._index = inputs.index
-        self._header = list(inputs)
+        self.d: int = hyperparams['d']
+        self.tol: float = hyperparams['tol']
+        self.maxiter: int = hyperparams['maxiter']
+        self.alpha: float = hyperparams['alpha']
+        self.t: float = hyperparams['t']
+        self.epsilon: float = hyperparams['epsilon']
         self._fitted = False
 
-
+    def set_training_data(self, *, inputs: Inputs) -> None:
+        self._training_inputs = inputs
+        self._fitted = False
+        
+        
     def fit(self, *, timeout: float = None, iterations: int = None) -> base.CallResult[None]:
-        julia_components_delayed_import()
-        if self._fitted:
+        if self._fitted: 
             return
-        if self._training_inputs is None:
-            raise ValueError("Missing training data.")
 
-        glrm_j = j.GLRM(self._training_inputs, self._losses, self._rx, self._ry, self._k)
-        X, Y, ch = j.fit_b(glrm_j)
-        self._X = X
-        self._Y = Y
+        X=self._training_inputs.values.copy()
+        X=X.T 
+                
+        tol=self.tol
+        maxiter=self.maxiter
+        m,n = X.shape
+        d=self.d
+        alpha=self.alpha
+        self._alpha=alpha
+        A=np.random.randn(m,d)*0.0001
+        Z=np.random.randn(d,n)*0.0001
+        epsilon=self.epsilon
+        iter=0
+        # 0.5*||X-AZ||+0.5alpha(||X||+||Z||)
+        while iter<self.maxiter:
+            iter=iter+1
+            gL_1=X-np.dot(A,Z)
+            gL_2=epsilon*np.sign(gL_1)
+            M=np.ones([m,n])
+            gL_1[np.abs(gL_1)>epsilon]=0
+            gL_2[np.abs(gL_1)<=epsilon]=0
+            gL=gL_1+gL_2  
+            gA=np.dot(gL,-Z.T)+alpha*A
+            gZ=np.dot(-A.T,gL)+alpha*Z
+            A_new=A-self.t*gA
+            Z_new=Z-self.t*gZ
+            
+            stopC=max(np.linalg.norm(Z_new-Z,'fro')/np.linalg.norm(Z_new,'fro'),np.linalg.norm(A_new-A,'fro')/np.linalg.norm(A_new,'fro'))
+            isstopC=stopC<tol
+            if isstopC:
+                Z=Z_new;
+                A=A_new;
+                break
+
+            Z=Z_new
+            A=A_new
+            
+        self._A=A 
         self._fitted = True
-        return base.CallResult(None)
 
+        return base.CallResult(None)
+        
     def produce(self, *, inputs: Inputs, timeout: float = None, iterations: int = None) -> base.CallResult[Outputs]:
-        julia_components_delayed_import()
-        try:
-            self._Y
-        except NameError:
-            raise Exception('Initial GLRM fitting not executed!')
-        else:
-            try:
-                if self._Y.shape[1] != inputs.values.shape[1]:
-                    raise ValueError
-            except ValueError:
-                raise Exception('Dimension of input vector does not match Y!')
-            else:
-                inputs_values = inputs.values
-                inputs_index = inputs.index
-                self._Y = self._Y.astype(float) #make sure column vectors finally have the datatype Array{float64,1} in Julia
-                num_cols = self._Y.shape[1]
-                _ry = [j.FixedLatentFeaturesConstraint(self._Y[:, i]) for i in range(num_cols)]
-                glrm_j_new = j.GLRM(inputs_values, self._losses, self._rx, _ry, self._k)
-                x, yp, ch = j.fit_b(glrm_j_new)
-                x = x.reshape(inputs_values.shape[0], -1)
-                outputs = pd.DataFrame(x, index=inputs_index)
-                outputs.metadata = inputs.metadata.clear()
+        testData = inputs
+        X=inputs.values.copy()
+        tol=self.tol
+        alpha=self._alpha
+        X = X.T
+        m,n = X.shape
+        epsilon=self.epsilon
+        A=self._A
+        Z=np.random.randn(self.d,n)*0.0001
+        iter=0
+        while iter<self.maxiter:
+
+            iter=iter+1
+            gL_1=X-np.dot(A,Z)
+            gL_2=epsilon*np.sign(gL_1)
+            M=np.ones([m,n])
+            gL_1[np.abs(gL_1)>epsilon]=0
+            gL_2[np.abs(gL_1)<=epsilon]=0
+            gL=gL_1+gL_2  
+            gZ=np.dot(-A.T,gL)+alpha*Z
+            Z_new=Z-self.t*gZ
+            
+            stopC=np.linalg.norm(Z_new-Z,'fro')/np.linalg.norm(Z_new,'fro')
+            isstopC=stopC<tol
+            if isstopC:
+                Z=Z_new;
+                break
+
+            Z=Z_new
+
+        Z=Z.T
+
+        outputs = pd.DataFrame(Z, index=testData.index)
+            
+        outputs.metadata = inputs.metadata.clear()
 
         return base.CallResult(outputs)
+        
+    
+    
+    def get_params(self) -> Params:
+        return Params(A=self._A)
+
+    def set_params(self, *, params: Params) -> None:
+        self._A = params.A
+
+
 
