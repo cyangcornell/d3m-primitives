@@ -38,7 +38,7 @@ class Hyperparams(hyperparams.Hyperparams):
     maxiter = hyperparams.Hyperparameter(default=500,
                                          description='The maximum number of iterations.',
                                          semantic_types=['https://metadata.datadrivendiscovery.org/types/TuningParameter'])
-    alpha = hyperparams.Hyperparameter(default=1.0,
+    alpha = hyperparams.Hyperparameter(default=0.1,
                                        description='The regularization parameter for the factorized dense matrix A.',
                                        semantic_types=['https://metadata.datadrivendiscovery.org/types/TuningParameter'])
    
@@ -111,22 +111,19 @@ class HuberPCA(unsupervised_learning.UnsupervisedLearnerPrimitiveBase[Inputs, Ou
         m,n = X.shape
         d=self.d
         alpha=self.alpha
-        self._alpha=alpha
-        A=np.random.randn(m,d)*0.0001
-        Z=np.random.randn(d,n)*0.0001
+        A=np.random.randn(m,d)*0.001
+        Z=np.random.randn(d,n)*0.001
         epsilon=self.epsilon
         iter=0
-        # 0.5*||X-AZ||+0.5alpha(||X||+||Z||)
+        # 0.5*||X-AZ||+0.5alpha(||A||+||Z||)
         while iter<self.maxiter:
             iter=iter+1
-            gL_1=X-np.dot(A,Z)
-            gL_2=epsilon*np.sign(gL_1)
-            M=np.ones([m,n])
-            gL_1[np.abs(gL_1)>epsilon]=0
-            gL_2[np.abs(gL_1)<=epsilon]=0
-            gL=gL_1+gL_2  
-            gA=np.dot(gL,-Z.T)+alpha*A
-            gZ=np.dot(-A.T,gL)+alpha*Z
+            R=X-np.dot(A,Z)
+            Q=(1+R**2/(epsilon**2))
+            Q=Q**(-0.5)
+            gR=np.multiply(R,Q)/epsilon
+            gA=np.dot(R,-Z.T)+alpha*A
+            gZ=np.dot(-A.T,R)+alpha*Z
             A_new=A-self.t*gA
             Z_new=Z-self.t*gZ
             
@@ -139,7 +136,7 @@ class HuberPCA(unsupervised_learning.UnsupervisedLearnerPrimitiveBase[Inputs, Ou
 
             Z=Z_new
             A=A_new
-            
+        
         self._A=A 
         self._fitted = True
 
@@ -149,23 +146,21 @@ class HuberPCA(unsupervised_learning.UnsupervisedLearnerPrimitiveBase[Inputs, Ou
         testData = inputs
         X=inputs.values.copy()
         tol=self.tol
-        alpha=self._alpha
+        alpha=self.alpha
         X = X.T
         m,n = X.shape
         epsilon=self.epsilon
         A=self._A
-        Z=np.random.randn(self.d,n)*0.0001
+        Z=np.random.randn(self.d,n)*0.01
         iter=0
         while iter<self.maxiter:
 
             iter=iter+1
-            gL_1=X-np.dot(A,Z)
-            gL_2=epsilon*np.sign(gL_1)
-            M=np.ones([m,n])
-            gL_1[np.abs(gL_1)>epsilon]=0
-            gL_2[np.abs(gL_1)<=epsilon]=0
-            gL=gL_1+gL_2  
-            gZ=np.dot(-A.T,gL)+alpha*Z
+            R=X-np.dot(A,Z)
+            Q=(1+R**2/(epsilon**2))
+            Q=Q**(-0.5)
+            gR=np.multiply(R,Q)/epsilon
+            gZ=np.dot(-A.T,gR)+alpha*Z
             Z_new=Z-self.t*gZ
             
             stopC=np.linalg.norm(Z_new-Z,'fro')/np.linalg.norm(Z_new,'fro')
