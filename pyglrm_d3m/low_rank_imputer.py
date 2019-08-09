@@ -1,33 +1,18 @@
+  
 import os
-import ctypes
-ctypes.CDLL("/opt/julia_files/julia-903644385b/lib/julia/libstdc++.so.6", os.RTLD_DEEPBIND)
-
 from typing import Union,Dict
 import numpy as np
 import pandas as pd
 
-## Python-wrapped Julia and GLRM components
-#global QuadLoss, L1Loss, HuberLoss
-#global ZeroReg, NonNegOneReg, QuadReg, NonNegConstraint
-#global j
-#from . import loss_reg
-#
-#QuadLoss = loss_reg.QuadLoss
-#L1Loss = loss_reg.L1Loss
-#HuberLoss = loss_reg.HuberLoss
-#ZeroReg = loss_reg.ZeroReg
-#NonNegOneReg = loss_reg.NonNegOneReg
-#QuadReg = loss_reg.QuadReg
-#NonNegConstraint = loss_reg.NonNegConstraint
-#j = loss_reg.j
-
-# d3m modules
+import pandas as pd
 from d3m import container
+from d3m.container import ndarray
 from d3m import utils
+
 from d3m.metadata import hyperparams, base as metadata_base, params
-from d3m.primitive_interfaces import base, transformer
-from common_primitives.utils import remove_columns_metadata
+from d3m.primitive_interfaces import base, unsupervised_learning
 from d3m.primitive_interfaces.base import CallResult,DockerContainer
+
 
 Inputs = container.DataFrame
 Outputs = container.DataFrame
@@ -35,43 +20,26 @@ Outputs = container.DataFrame
 __author__ = 'Cornell'
 __version__ = 'v0.1.1'
 
-#__all__ = ('LowRankImputer',)
-
-# This function allows us to delay the import process for Julia components to
-# avoid up front overhead.
-julia_components_loaded = False
-def julia_components_delayed_import():
-  # Only perform  the import once.
-  global julia_components_loaded
-  if julia_components_loaded:
-    return
-  else:
-    julia_components_loaded = True
-
-  # Now import and define the symbols we want:
-  global QuadLoss, L1Loss, HuberLoss
-  global ZeroReg, NonNegOneReg, QuadReg, NonNegConstraint
-  global j
-  from . import loss_reg
-
-  QuadLoss = loss_reg.QuadLoss
-  L1Loss = loss_reg.L1Loss
-  HuberLoss = loss_reg.HuberLoss
-  ZeroReg = loss_reg.ZeroReg
-  NonNegOneReg = loss_reg.NonNegOneReg
-  QuadReg = loss_reg.QuadReg
-  NonNegConstraint = loss_reg.NonNegConstraint
-  j = loss_reg.j
+class Params(params.Params):
+    A: ndarray
 
 #Hyperparameter class.
 class Hyperparams(hyperparams.Hyperparams):
-    k = hyperparams.Hyperparameter(default=2,
-                                   description='Maximum rank of the decomposed matrices. For example, if the matrix A to be decomposed is m-by-n, then after decomposition A≈XY, X is m-by-k, Y is k-by-n. ',
-                                   semantic_types=['https://metadata.datadrivendiscovery.org/types/ControlParameter'])
-
+    d = hyperparams.Hyperparameter(default=0,
+                                   description='The reduced dimension of matrix factorization. It is usually smaller than the sizes of the matrix. When setting to 0, d will be automatically roughly estimated.',
+                                   semantic_types=['https://metadata.datadrivendiscovery.org/types/TuningParameter'])
+    tol = hyperparams.Hyperparameter(default=1e-5,
+                                     description='The tolerance of the relative changes of the variables in optimization. It will be utilized to check the convergence.',
+                                     semantic_types=['https://metadata.datadrivendiscovery.org/types/TuningParameter'])
+    maxiter = hyperparams.Hyperparameter(default=200,
+                                         description='The maximum number of iterations.',
+                                         semantic_types=['https://metadata.datadrivendiscovery.org/types/TuningParameter'])
+    alpha = hyperparams.Hyperparameter(default=0.1,
+                                       description='The regularization parameter for the factorized dense matrix A.',
+                                       semantic_types=['https://metadata.datadrivendiscovery.org/types/TuningParameter'])
 
 #The LowRankImputer primitive.
-class LowRankImputer(transformer.TransformerPrimitiveBase[Inputs, Outputs, Hyperparams]):
+class LowRankImputer(unsupervised_learning.UnsupervisedLearnerPrimitiveBase[Inputs, Outputs, Params, Hyperparams]):
 
     """
         This primitive performs low rank imputation: rather than just imputing missing entries with, for example, means or medians of each feature, it recover missing entries based on low rank structure of the dataset. 
@@ -111,32 +79,156 @@ class LowRankImputer(transformer.TransformerPrimitiveBase[Inputs, Outputs, Hyper
     def __init__(self, *, hyperparams: Hyperparams, docker_containers: Dict[str,DockerContainer] = None, _versbose: int = 0) -> None:
 
         super().__init__(hyperparams=hyperparams, docker_containers = docker_containers)
+        
+        self.d: int = hyperparams['d']
+        self.tol: float = hyperparams['tol']
+        self.maxiter: int = hyperparams['maxiter']
+        self.alpha: float = hyperparams['alpha']
+        self._fitted = False
 
-        self._k: float = hyperparams['k']
+    def set_training_data(self, *, inputs: Inputs) -> None:
+        self._training_inputs = inputs
+        self._fitted = False
 
+        
+    def fit(self, *, timeout: float = None, iterations: int = None) -> CallResult[None]:
+        if self._fitted: 
+            return
+        
+        X_incomplete=self._training_inputs.copy()
+        X=self._training_inputs.values.copy()
+        X=X.T 
+        m0=1
+        n0=0
+                
+        tol=self.tol
+        maxiter=self.maxiter
+        m,n = X.shape
+        M=np.ones([m,n])
+        M[np.isnan(X)]=0
+        sr=M.sum()/m/n
+        X[np.isnan(X)]=0
+
+        if self.d==0:
+            d=np.int(np.round(0.25*sr*min(m,n)))
+        else:
+            d=self.d
+        
+        d=min(d,min(m,n))
+        alpha=self.alpha*(m+n)/d
+        self._alpha=alpha
+        self._d=d
+        U, S, Vt = np.linalg.svd(X/sr, full_matrices=False)
+        A=np.dot(U[:,0:d],np.diag(S[0:d]**0.5))
+        Z=np.dot(np.diag(S[0:d]**0.5),Vt[0:d,:])
+        rho=max(1.5*np.sqrt(M.mean()),0.5)
+        iter=0
+        cc=0.5
+        while iter<self.maxiter:
+            iter=iter+1
+            # Z_new
+            if iter==1:
+                Z=Z
+            else:
+                Z=Z_new+cc*(Z_new-Z_old)
+                
+            tau=rho*np.linalg.norm(np.dot(A.T,A),2)
+            G=Z+np.dot(A.T,np.multiply(M,X-np.dot(A,Z)))/tau
+            Z_new=1/(alpha+tau)*G*tau
+
+            # A_new
+            if iter==1:
+                A=A
+            else:
+                A=A_new+cc*(A_new-A_old)
+
+            kai=rho*np.linalg.norm(np.dot(Z_new,Z_new.T),2)
+            H=A+np.dot(np.multiply(M,X-np.dot(A,Z_new)),Z_new.T)/kai
+            A_new=1/(alpha+kai)*H*kai
+
+            # check convergence
+            stopC=max(np.linalg.norm(Z_new-Z,'fro')/np.linalg.norm(Z_new,'fro'),np.linalg.norm(A_new-A,'fro')/np.linalg.norm(A_new,'fro'))
+            isstopC=stopC<tol
+
+            if isstopC:
+                Z=Z_new;
+                A=A_new;
+                break
+            Z_old=Z
+            A_old=A
+            Z=Z_new
+            A=A_new
+
+        #X_temp=np.multiply(X,M)+np.multiply(np.dot(A,Z),1-M)
+        X_temp=np.dot(A,Z)
+
+        if m0>n0:
+            X_temp = X_temp.T
+            
+        self._A=A
+        #self._X=pd.DataFrame(X_temp,X_incomplete.index,X_incomplete.columns) 
+        self._X=container.DataFrame(X_temp, index=X_incomplete.index, columns=X_incomplete.columns)        
+        self._fitted = True
+
+        return CallResult(None)
+        
     def produce(self, *, inputs: Inputs, timeout: float = None, iterations: int = None) -> base.CallResult[Outputs]:
-        julia_components_delayed_import()
+        testData = inputs
+        X=inputs.values.copy()
+        tol=self.tol
+        maxiter=self.maxiter
+        X = X.T
+        m,n = X.shape
+        M=np.ones([m,n])
+        M[np.isnan(X)]=0
+        sr=M.sum()/m/n
+        X[np.isnan(X)]=0
+        alpha=self._alpha
+        d=self._d
+        A=self._A
+        Z=np.zeros((d,n))
+        rho=max(1.5*np.sqrt(M.mean()),0.5)
+        tau=rho*np.linalg.norm(np.dot(A.T,A),2)
+        iter=0
+        cc=0.5
+        while iter<self.maxiter:
 
-        columns_to_drop = list(np.where(np.array(np.sum(np.invert(np.isnan(inputs))))==0)[0])
-        
-        if len(columns_to_drop):
-            inputs.drop(columns=inputs.columns[columns_to_drop], inplace=True)
-#        obs = list(zip(*np.where(np.invert(np.isnan(inputs.values)))))
-#        obs = [(item[0]+1, item[1]+1) for item in obs]
-#        j.obs = obs
-        self._keys = list(inputs)
-        self._index = inputs.index
-        
-        inputs_df_with_missing = j.NaNs_to_Missing_b(j.DataFrame(inputs.values))
+            iter=iter+1
+            # Z_new
+            if iter==1:
+                Z=Z
+            else:
+                Z=Z_new+cc*(Z_new-Z_old)
+            
+            G=Z+np.dot(A.T,np.multiply(M,X-np.dot(A,Z)))/tau
+            Z_new=1/(alpha+tau)*G*tau
 
-        glrm_j = j.GLRM(inputs_df_with_missing, QuadLoss(), ZeroReg(), ZeroReg(), self._k, obs=j.observations(inputs_df_with_missing))
-        X, Y, ch = j.fit_b(glrm_j)
+            # check convergence
+            stopC=np.linalg.norm(Z_new-Z,'fro')/np.linalg.norm(Z_new,'fro')
+            isstopC=stopC<tol
 
-        self._X = X
-        self._Y = Y
-        A = np.dot(self._X.T, self._Y)
-        outputs = container.DataFrame(A, index=self._index, columns=self._keys)
-        if len(columns_to_drop):
-            outputs.metadata = remove_columns_metadata(inputs.metadata, columns_to_drop)
-        
+            if isstopC:
+                break
+
+            Z=Z_new                
+            Z_old=Z
+            Z=Z_new
+
+            #X_temp=np.multiply(X,M)+np.multiply(np.dot(A,Z),1-M)
+            X_temp=np.dot(A,Z)
+            X_temp = X_temp.T
+
+            outputs = container.DataFrame(X_temp, index=testData.index, columns=testData.columns)
+            
+        outputs.metadata = inputs.metadata
+
         return CallResult(outputs)
+        
+    
+    
+    def get_params(self) -> Params:
+        return Params(A=self._A)
+
+    def set_params(self, *, params: Params) -> None:
+        self._A = params.A
+
