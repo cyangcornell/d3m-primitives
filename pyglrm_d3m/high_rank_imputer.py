@@ -197,9 +197,11 @@ class HighRankImputer(SupervisedLearnerPrimitiveBase[Inputs, Outputs, Params, Hy
 
             for i in dd[0]:
                 tpc=testData.values[i,1]
-                id_col=Xp.columns.get_loc(np.str(tpc))
+                
+   #             id_col=Xp.columns.get_loc(np.str(tpc))
+                id_col=Xp.columns.get_loc(tpc)
                 tpr=testData.values[i,0]
-                id_row=Xp.index.get_loc(np.str(tpr))
+                id_row=Xp.index.get_loc(tpr)
 
                 y_pred[i] = Xp.values[id_row,id_col]
 
