@@ -54,7 +54,7 @@ class PreprocessCategoricalColumns(UnsupervisedLearnerPrimitiveBase[Inputs, Outp
                         'package_uri': 'git+https://github.com/cyangcornell/d3m-primitives.git@{git_commit}#egg=pyglrm-d3m'.format(git_commit=utils.current_git_commit(os.path.dirname(__file__)))
                         
                         }],
-        'python_path': 'd3m.primitives.preprocess_categorical_columns.Cornell',
+        'python_path': 'd3m.primitives.column_parser.preprocess_categorical_columns.Cornell',
 
         'algorithm_types': [
             metadata_base.PrimitiveAlgorithmType.DATA_CONVERSION,

@@ -52,7 +52,7 @@ setup(
        'feature_extraction.huber_pca.Cornell = pyglrm_d3m.huber_pca:HuberPCA',
        'data_preprocessing.low_rank_imputer.Cornell = pyglrm_d3m.low_rank_imputer:LowRankImputer',
        'collaborative_filtering.high_rank_imputer.Cornell = pyglrm_d3m.high_rank_imputer:HighRankImputer',
-       'preprocess_categorical_columns.Cornell = pyglrm_d3m.preprocess_categorical_columns:PreprocessCategoricalColumns'],
+       'column_parser.preprocess_categorical_columns.Cornell = pyglrm_d3m.preprocess_categorical_columns:PreprocessCategoricalColumns'],
       }
   )
 
