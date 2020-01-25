@@ -173,7 +173,7 @@ class HuberPCA(unsupervised_learning.UnsupervisedLearnerPrimitiveBase[Inputs, Ou
 
         Z=Z.T
 
-        outputs = pd.DataFrame(Z, index=testData.index)
+        outputs = container.DataFrame(Z, index=testData.index)
             
         outputs.metadata = inputs.metadata
 
